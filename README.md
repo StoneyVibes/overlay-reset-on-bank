@@ -33,17 +33,15 @@ Requires **JDK 11**.
 
 Jagex accounts: see [Using Jagex Accounts](https://github.com/runelite/runelite/wiki/Using-Jagex-Accounts).
 
-## Plugin Hub submission (next step)
+## Install (sideload)
 
-1. Create a **public** GitHub repository (e.g. `overlay-reset-on-bank`) and push this project.
-2. Fork [runelite/plugin-hub](https://github.com/runelite/plugin-hub).
-3. Add `plugins/overlay-reset-on-bank` with:
-   ```
-   repository=https://github.com/<you>/overlay-reset-on-bank.git
-   commit=<full 40-char commit hash>
-   ```
-4. Open a pull request to plugin-hub and fix any CI / review comments.
+This plugin is **not** on the [RuneLite Plugin Hub](https://github.com/runelite/plugin-hub) (hub policy rejects plugins that reposition RuneLite’s core UI overlays). Use sideloading instead:
+
+1. Build the plugin JAR: `./gradlew jar`
+2. Enable **Developer mode** in the RuneLite launcher.
+3. Copy `build/libs/*.jar` into `~/.runelite/sideloaded-plugins/` (Windows: `%USERPROFILE%\.runelite\sideloaded-plugins\`).
+4. Restart RuneLite and enable **Overlay Reset on Bank** in the plugin list.
 
 ## License
 
-BSD 2-Clause
+[BSD 2-Clause](LICENSE)
