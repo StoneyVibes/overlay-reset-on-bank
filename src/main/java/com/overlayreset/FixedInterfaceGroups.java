@@ -12,6 +12,9 @@ import net.runelite.api.gameval.InterfaceID;
  * <p>
  * Bank ({@link InterfaceID#BANKMAIN}) and shop ({@link InterfaceID#SHOPMAIN})
  * are handled by their own config toggles and are intentionally excluded here.
+ * <p>
+ * Only modal / full windows belong here. Side-tab panels (logout, world switcher,
+ * grouping, …) must not be listed or tab switching would trigger a reset.
  */
 final class FixedInterfaceGroups
 {
@@ -87,6 +90,10 @@ final class FixedInterfaceGroups
 		InterfaceID.BR_REWARD,
 		InterfaceID.LEAGUE_REWARDS,
 		InterfaceID.CA_REWARDS,
+		InterfaceID.CA_OVERVIEW,
+		InterfaceID.CA_TASKS,
+		InterfaceID.CA_BOSSES,
+		InterfaceID.CA_BOSS,
 		InterfaceID.SOUL_WARS_REWARDS,
 		InterfaceID.PVP_ARENA_REWARDS,
 		InterfaceID.COLOSSEUM_REWARD,
@@ -101,11 +108,10 @@ final class FixedInterfaceGroups
 		InterfaceID.SPEEDRUNNING_REWARDS,
 		InterfaceID.ADVENTUREPATH_REWARD,
 		// Map / travel / misc large UIs
+		// (WORLDSWITCHER / GROUPING are normal side tabs — intentionally excluded.)
 		InterfaceID.WORLDMAP,
-		InterfaceID.WORLDSWITCHER,
 		InterfaceID.FAIRYRINGS,
 		InterfaceID.FAIRYRINGS_LOG,
-		InterfaceID.GROUPING,
 		InterfaceID.MAKEOVER,
 		InterfaceID.MAKEOVER_MAGE,
 		InterfaceID.COMBINATION_LOCK

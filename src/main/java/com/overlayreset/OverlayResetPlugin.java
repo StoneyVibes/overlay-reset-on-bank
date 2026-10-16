@@ -20,6 +20,7 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
@@ -78,6 +79,11 @@ public class OverlayResetPlugin extends Plugin
 	private final Map<String, String> backup = new HashMap<>();
 	private boolean suspended;
 	private final Set<Integer> activeTriggers = new HashSet<>();
+	/**
+	 * After world-hop, bank/shop widgets can briefly exist without being open.
+	 * Ignore suspend until this client tick (exclusive).
+	 */
+	private int suppressSuspendBeforeTick = -1;
 
 	@Override
 	protected void startUp()
@@ -112,6 +118,7 @@ public class OverlayResetPlugin extends Plugin
 		activeTriggers.clear();
 		backup.clear();
 		suspended = false;
+		suppressSuspendBeforeTick = -1;
 	}
 
 	@Provides
@@ -125,6 +132,9 @@ public class OverlayResetPlugin extends Plugin
 	{
 		if (event.getGameState() != GameState.LOGGED_IN)
 		{
+			// Hop/logout: drop triggers and put custom layout back immediately.
+			// Do NOT re-scan interfaces here — hop briefly spawns bank/shop widgets
+			// and would otherwise suspend (wiping live positions to default).
 			activeTriggers.clear();
 			if (suspended || hasDurableBackup())
 			{
@@ -133,33 +143,67 @@ public class OverlayResetPlugin extends Plugin
 			return;
 		}
 
-		clientThread.invokeLater(() ->
-		{
-			applyRuneLiteConfigToLiveOverlays();
-			syncTriggerState();
-		});
+		// Ghost bank WidgetLoaded fires right after hop; ignore suspend for a few ticks.
+		suppressSuspendBeforeTick = client.getTickCount() + 4;
+		// Re-apply saved custom positions after hop; never auto-suspend from a scan.
+		clientThread.invokeLater(this::applyRuneLiteConfigToLiveOverlays);
 	}
 
 	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded event)
 	{
 		int groupId = event.getGroupId();
-		if (shouldHandle(groupId))
+		if (!shouldHandle(groupId))
 		{
-			activeTriggers.add(groupId);
-			suspendIfNeeded();
+			return;
 		}
+
+		// WidgetLoaded fires during world-hop UI rebuilds too. Confirm the interface
+		// is actually open on the next client pass before suspending.
+		clientThread.invokeLater(() -> trySuspendForGroup(groupId));
 	}
 
 	@Subscribe
 	public void onWidgetClosed(WidgetClosed event)
 	{
 		int groupId = event.getGroupId();
-		if (!activeTriggers.remove(groupId))
+		if (!activeTriggers.contains(groupId))
 		{
 			return;
 		}
 
+		// Rebuilds fire Closed→Loaded while still open — re-check before restore.
+		clientThread.invokeLater(() -> tryRestoreAfterClose(groupId));
+	}
+
+	private void trySuspendForGroup(int groupId)
+	{
+		if (client.getGameState() != GameState.LOGGED_IN)
+		{
+			return;
+		}
+		if (client.getTickCount() < suppressSuspendBeforeTick)
+		{
+			return;
+		}
+		if (!isGroupOpen(groupId))
+		{
+			return;
+		}
+
+		activeTriggers.add(groupId);
+		suspendIfNeeded();
+	}
+
+	private void tryRestoreAfterClose(int groupId)
+	{
+		if (isGroupOpen(groupId))
+		{
+			// Still open (rebuild) — keep suspended.
+			return;
+		}
+
+		activeTriggers.remove(groupId);
 		if (activeTriggers.isEmpty() && suspended)
 		{
 			restoreOverlays();
@@ -169,6 +213,15 @@ public class OverlayResetPlugin extends Plugin
 	private void syncTriggerState()
 	{
 		activeTriggers.clear();
+
+		if (client.getGameState() != GameState.LOGGED_IN)
+		{
+			if (suspended)
+			{
+				restoreOverlays();
+			}
+			return;
+		}
 
 		for (int groupId : enabledTriggerGroups())
 		{
@@ -221,14 +274,15 @@ public class OverlayResetPlugin extends Plugin
 
 	private boolean isGroupOpen(int groupId)
 	{
-		// Prefer known root components when available.
+		// Bank: require the bank item container — UNIVERSE alone is true for hop ghosts.
 		if (groupId == InterfaceID.BANKMAIN)
 		{
-			return isComponentOpen(InterfaceID.Bankmain.UNIVERSE);
+			return client.getItemContainer(InventoryID.BANK) != null
+				&& isComponentOpen(InterfaceID.Bankmain.ITEMS);
 		}
 		if (groupId == InterfaceID.SHOPMAIN)
 		{
-			return isComponentOpen(InterfaceID.Shopmain.UNIVERSE);
+			return isComponentOpen(InterfaceID.Shopmain.ITEMS);
 		}
 
 		Widget widget = client.getWidget(groupId, 0);
@@ -244,6 +298,21 @@ public class OverlayResetPlugin extends Plugin
 	private void suspendIfNeeded()
 	{
 		if (suspended || activeTriggers.isEmpty())
+		{
+			return;
+		}
+		if (client.getGameState() != GameState.LOGGED_IN)
+		{
+			return;
+		}
+		if (client.getTickCount() < suppressSuspendBeforeTick)
+		{
+			return;
+		}
+
+		// Drop stale trigger IDs from hop/rebuild ghosts before resetting anything.
+		activeTriggers.removeIf(id -> !isGroupOpen(id));
+		if (activeTriggers.isEmpty())
 		{
 			return;
 		}
